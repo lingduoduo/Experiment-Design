@@ -270,3 +270,241 @@ Start by identifying key metrics to optimize. Use existing data to establish pri
 
 https://fastercapital.com/content/Bayesian-click-through-modeling--A-probabilistic-approach-to-estimate-click-through-rates.html
 
+
+## Worked examples from the Bayesian analysis folder
+
+Click-through rate (CTR) is clicks divided by impressions. A Bayesian model estimates the underlying click probability and its uncertainty, rather than treating the observed ratio as exact. This guide uses the Python examples in this folder to connect that estimate to experiment comparisons, future click counts, and related models.
+
+These scripts implement Bayesian inference. Bayesian optimization additionally needs a procedure for choosing the next configuration to evaluate, such as an acquisition function; that search loop is not implemented here.
+
+### Choose a model for the observation
+
+| Question | Example | Model and scope |
+| --- | --- | --- |
+| What is the click probability? | [beta_binomial.py](beta_binomial.py) | Beta prior and Binomial likelihood; the direct starting point for CTR. |
+| How many events occur per unit exposure? | [gamma_poisson.py](gamma_poisson.py) | Gamma prior and Poisson likelihood; models an event rate, not a bounded probability. |
+| What is the mean of a continuous metric? | [normal_normal.py](normal_normal.py) | Normal prior and Normal likelihood with known observation standard deviation. |
+| How does a noisy state evolve over time? | [kalma_filtering.py](kalma_filtering.py) | Gaussian state estimation; the existing demonstrations track position. |
+| How do media spend, carryover, and saturation relate to sales? | [mcmc.py](mcmc.py) | Marketing-mix model fitted using NUTS; illustrates inference beyond conjugate models. |
+
+### Run the examples
+
+Run the snippets below from this directory so sibling imports resolve:
+
+```bash
+cd Helper_Functions/6_Bayesian_Analysis
+python -m pip install numpy scipy
+```
+
+The MCMC example also requires `torch` and `pyro-ppl`. The snippets use the helpers' current interfaces. Several helpers draw from NumPy's global random generator, so the examples seed it explicitly. Importing `normal_normal.py` also runs its built-in demonstration and prints its results; the other modules can be imported without launching their demonstrations.
+
+### 1. Estimate CTR with a Beta–Binomial model
+
+For `k` clicks from `n` impressions, assume each impression has one binary click outcome and the same underlying click probability `p`, with outcomes conditionally independent given `p`:
+
+$$
+p \sim \operatorname{Beta}(a,b), \qquad
+k \mid p,n \sim \operatorname{Binomial}(n,p).
+$$
+
+The posterior has a closed form:
+
+$$
+p \mid k,n \sim \operatorname{Beta}(a+k,b+n-k),
+\qquad
+\mathbb{E}[p\mid k,n]=\frac{a+k}{a+b+n}.
+$$
+
+The prior mean is `a / (a + b)`, and `a + b` controls its weight relative to the observed impressions in the posterior mean. For example, `Beta(2, 98)` has mean 2% and concentration 100. Choose these values from relevant historical information or an explicit assumption, and check how conclusions change with other plausible priors. Do not use the same observations both to set the prior and to update it.
+
+```python
+import numpy as np
+from beta_binomial import beta_binomial_posterior
+
+np.random.seed(42)
+result = beta_binomial_posterior(
+    successes=37,
+    trials=1000,
+    a=2,
+    b=98,
+    cred=0.95,
+)
+
+print("Posterior parameters:", result["posterior"])
+print(f"Observed CTR: {37 / 1000:.2%}")
+print(f"Posterior mean CTR: {result['mean']:.2%}")
+lo, hi = result["credible_interval"]
+print(f"95% credible interval: [{lo:.2%}, {hi:.2%}]")
+```
+
+The posterior is `Beta(39, 1061)`, with mean approximately **3.55%**, compared with the observed CTR of **3.70%**. The credible interval contains 95% of the posterior probability under the stated model and prior. It describes uncertainty about `p`, not the range containing 95% of future observed CTRs.
+
+The helper returns analytic summaries, 50,000 independent posterior draws, and a density grid. These are direct Beta draws, not MCMC samples. It returns `map=None` when the posterior parameters do not both exceed one, rather than reporting a boundary mode.
+
+For sparse segments, including zero observed clicks, the prior keeps the posterior from collapsing to a point at zero. Repeated-user dependence, mixed populations, or changing traffic can require a richer model than one shared `p`.
+
+### 2. Compare two experiment variants
+
+Fit each arm using the same prior, then subtract independent posterior draws. This extends the Beta helper without changing its implementation.
+
+```python
+import numpy as np
+from beta_binomial import beta_binomial_posterior
+
+np.random.seed(42)  # Seed once; do not reseed between arms.
+arm_a = beta_binomial_posterior(37, 1000, a=2, b=98)
+arm_b = beta_binomial_posterior(48, 1000, a=2, b=98)
+
+lift = arm_b["draws"] - arm_a["draws"]
+minimum_lift = 0.005  # 0.5 percentage points, not 0.5% relative lift.
+lo, hi = np.quantile(lift, [0.025, 0.975])
+print(f"P(CTR B > CTR A): {np.mean(lift > 0):.3f}")
+print(f"P(lift > 0.5 percentage points): {np.mean(lift > minimum_lift):.3f}")
+print(f"Mean absolute lift: {100 * lift.mean():.2f} percentage points")
+print(f"95% lift interval: [{100 * lo:.2f}, {100 * hi:.2f}] percentage points")
+```
+
+The analytic posterior means are approximately 3.55% for A and 4.55% for B, a difference of **1.00 percentage point**. A positive difference in means alone does not establish that B is better: the distribution of differences describes the remaining uncertainty. The printed probabilities and interval are Monte Carlo estimates.
+
+Independent arm posteriors are appropriate for this example's independent priors and arm likelihoods. Randomized assignment supports interpreting the contrast as an experiment effect; observational differences may reflect audience or placement differences. Define a practically meaningful improvement and account for costs and other outcome metrics when making a rollout decision.
+
+### 3. Predict clicks in future impressions
+
+A posterior predictive distribution includes uncertainty about both `p` and future click outcomes. The helper `posterior_predictive_next_m` computes the Beta–Binomial probability mass function over `0, ..., m` clicks.
+
+```python
+import numpy as np
+from beta_binomial import posterior_predictive_next_m
+
+click_counts, probabilities = posterior_predictive_next_m(
+    k=37, n=1000, a=2, b=98, m=100,
+)
+cdf = np.cumsum(probabilities)
+interval = click_counts[np.searchsorted(cdf, [0.025, 0.975])]
+print(f"Expected clicks in the next 100 impressions: {click_counts @ probabilities:.2f}")
+print("95% equal-tail predictive interval:", tuple(interval))
+print(f"P(at least 5 clicks): {probabilities[click_counts >= 5].sum():.3f}")
+```
+
+The expected number of clicks is `100 * 39 / 1100`, or approximately **3.55**. Because counts are discrete, the interval's coverage need not be exactly 95%. This prediction assumes the future impressions share the modeled click probability.
+
+For sequential updates under a fixed `p`, pass the previous posterior parameters as the next prior and supply **only new counts**:
+
+```python
+from beta_binomial import beta_binomial_posterior
+
+first = beta_binomial_posterior(37, 1000, a=2, b=98)
+second = beta_binomial_posterior(
+    12, 300,
+    a=first["posterior"]["a"],
+    b=first["posterior"]["b"],
+)
+print(second["posterior"])  # {'a': 51, 'b': 1349}
+```
+
+This is equivalent to updating the original prior with 49 clicks from 1,300 impressions. Reusing cumulative counts with the updated prior would double-count earlier observations. A cumulative posterior does not automatically accommodate a CTR that changes over time.
+
+### 4. Model event rates with Gamma–Poisson
+
+[gamma_poisson.py](gamma_poisson.py) handles event counts with exposure:
+
+$$
+y_i\mid\lambda \sim \operatorname{Poisson}(\lambda t_i),
+\qquad \lambda\sim\operatorname{Gamma}(\alpha,\beta),
+$$
+
+where `beta` is a **rate**, not a scale. The posterior shape is `alpha + sum(counts)` and its rate is `beta + sum(exposure)`. Exposure units determine the units of `lambda` and the interpretation of its prior.
+
+```python
+import numpy as np
+from gamma_poisson import poisson_gamma_posterior, poisson_posterior_predictive
+
+np.random.seed(42)
+result = poisson_gamma_posterior(
+    counts=[3, 0, 2, 5, 1, 4],
+    exposure=[1, 1, 1, 1, 1, 1],  # Days of observation.
+    alpha=1,
+    beta=1,
+)
+print(f"Posterior events per day: {result['mean']:.3f}")
+print("95% rate interval:", result["credible_interval"])
+future = poisson_posterior_predictive(result, t_new=1.0)
+print("Next-day predictive interval:", np.quantile(future, [0.025, 0.975]))
+```
+
+This gives a `Gamma(shape=16, rate=7)` posterior, with mean approximately **2.286 events per day**. The same file includes `compare_two_poisson_rates`, which returns `P(rateA > rateB)` and posterior rate-ratio summaries.
+
+For binary clicks per impression, use the Binomial likelihood directly. A Poisson model can approximate rare click counts, but permits counts greater than the number of impressions and does not constrain the event rate to `[0, 1]`.
+
+### 5. Estimate a continuous mean with Normal–Normal
+
+[normal_normal.py](normal_normal.py) illustrates a conjugate update for continuous observations with known observation standard deviation `sigma`. Its prior on the mean has mean `mu0` and standard deviation `tau0`.
+
+```python
+import numpy as np
+from normal_normal import normal_normal_mean, posterior_predictive
+
+np.random.seed(42)  # Reset after the module's built-in demonstration.
+result = normal_normal_mean(
+    x=[4.8, 5.1, 4.9, 5.4, 4.7],
+    mu0=4.0,
+    tau0=1.5,
+    sigma=2.0,
+)
+print("Posterior mean and std:", result["posterior"])
+print("95% mean interval:", result["credible_interval"])
+future = posterior_predictive(
+    result["posterior"]["mean"], result["posterior"]["std"], sigma=2.0,
+)
+print("Future observation interval:", np.quantile(future, [0.025, 0.975]))
+```
+
+The predictive variance is `sigma**2 + posterior_std**2`, so individual future observations are more variable than the inferred mean. This model fits a continuous, approximately Gaussian metric under its known-noise assumption; it is not a direct model for individual binary clicks.
+
+### 6. Track a changing state with a Kalman filter
+
+[kalma_filtering.py](kalma_filtering.py) contains scalar and two-dimensional position-tracking demonstrations. The scalar filter alternates prediction and measurement updates:
+
+```python
+import numpy as np
+from kalma_filtering import KalmanFilter1D
+
+kf = KalmanFilter1D(x=0.0, P=500.0, Q=2.0, R=3.0)
+for reading, motion in zip([5.0, 6.0, 8.0, 9.0], [1.0, 2.0, 2.0, 1.0]):
+    mean, variance = kf.step(z=reading, u=motion)
+    print(f"Estimated position: {mean:.2f}; std: {np.sqrt(variance):.2f}")
+```
+
+Here `P` is state variance, `Q` adds process uncertainty during prediction, and `R` is measurement variance. This demonstrates sequential Bayesian updating when the state can move. The file's `KalmanFilter2D` additionally estimates velocity from noisy position observations.
+
+Applying these Gaussian filters directly to raw CTR can produce estimates outside `[0, 1]` and ignores the dependence of measurement uncertainty on impression counts. A dynamic CTR model would need an appropriate observation model, such as Binomial clicks with an evolving latent log-odds state; that extension is not implemented in this folder.
+
+### 7. Use MCMC for a richer marketing model
+
+[mcmc.py](mcmc.py) generates 120 synthetic sales observations across three media channels, then fits a marketing-mix model using Pyro's No-U-Turn Sampler (NUTS). Its mean sales model is:
+
+$$
+s_{t,j}=X_{t,j}+\alpha_j s_{t-1,j},\qquad s_{-1,j}=0,
+$$
+
+$$
+\mu_t = c + \sum_j \beta_j\left(1-e^{-\lambda_j s_{t,j}}\right)
+            + \gamma\,\mathrm{promo}_t,
+\qquad y_t\sim\mathcal{N}(\mu_t,\sigma^2).
+$$
+
+The implementation uses positive priors for media effects and noise, Beta priors for decay, and LogNormal priors for saturation parameters. It shares the same media transformation between simulation and fitting. The synthetic media coefficients are `[8, 15, 5]` in sales units, representing each channel's maximum contribution as saturation approaches one.
+
+```bash
+python -m pip install torch pyro-ppl
+
+# Check that the example runs; these draws do not establish convergence.
+python mcmc.py --samples 10 --warmup 10 --seed 42
+
+# A longer run with multiple chains for assessing sampling diagnostics.
+python mcmc.py --samples 1000 --warmup 500 --chains 4 --seed 42
+```
+
+The script prints a posterior summary, including effective sample sizes, R-hat, and divergences, followed by synthetic truth and posterior means. Inspect those diagnostics and whether the model reproduces the observed data before interpreting estimates. More draws alone do not resolve weak identification between media effects, decay, saturation, and baseline sales.
+
+This is a sales model, not a CTR estimator or an implemented budget optimizer. A CTR regression extension would use a Binomial likelihood with impression totals and probabilities constrained through a link such as the logistic function. For the simple Beta–Binomial CTR model above, exact posterior calculations and direct sampling already suffice; MCMC is unnecessary.
