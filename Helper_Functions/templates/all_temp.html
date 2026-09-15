@@ -1,0 +1,100 @@
+<div class="box" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;" >
+        <h1 class="title">
+
+        <div class="shadow">
+            <table class="container" style="width:98%; border-spacing: 0px; border-collapse: collapse; margin-left: 2px">
+
+              <thead style="margin:10px 0">
+                <tr bgcolor="#ffffff" align="left" style="padding-top:5px;color:#444444;font-size:16px">
+                  <th colspan="5" style="padding:10px 0px;color:#444;font-size:16px;text-align:left">{{ title }}</th>
+                </tr>
+              </thead>
+
+              <tbody>
+
+                <tr>
+                  <td min-width="20%" height="40" style="text-align:right;font-size:10px;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3"></td>
+                  <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">YESTERDAY<br>{{ yesterday }}</td>
+                  <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">ONE WEEK PRIOR<br>{{ one_week_prior }}</td>
+                  <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">WEEKLY AVG.<br>{{ weekly_avg }}</td>
+                  <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">MONTHLY AVG.<br>{{ monthly_avg }}</td>
+                </tr>
+
+                {% set current_section = link_dict[title] %}
+                {% for key,value in table.iterrows() %}
+                  {% set current_metric = value['context'] %}
+                  {% set current_datatype = current_section[current_metric] %}
+
+                    <tr class="rows">
+
+                      <tr>
+
+                        <td class="m_-1971619191583544652click" style="text-align:right;padding:7px;font-size:13px;text-align:left;font-size:13px;color:#444;font-weight:bold;font-weight:bold;border:1px solid #d3d3d3">
+                          <a href="https://dashboards.net/viewr/?datatypes={{ current_datatype }}&geos="> {{ value['context'] }} </a>
+                        </td>
+
+
+
+
+
+
+                        <td style="background:#fafafa;color:black;text-align:right;padding:7px;font-size:13px;font-weight:normal;border:1px solid #d3d3d3">
+                          {% if (value['yesterday'] < 1) and (value['yesterday'] > 0) %}
+                          {{ "%.2f"|format(value['yesterday'] * 100) }}%
+                          {% else %}
+                          {{ "{:,}".format(value['yesterday']|round|int) }}
+                          {% endif %}
+                        </td>
+
+
+
+
+                        <td style="background-color:{{value['wow_bgcolor_diff']}};color:{{value['wow_font_color']}};text-align:right;padding:7px;font-size:13px;font-weight:normal;border:1px solid #d3d3d3">
+                          {{ "%.2f"|format(value['wow_perc']) }}%
+                          <br>
+                         <span style="font-size:10px">
+                            {% if (value['week_ago'] < 1) and (value['week_ago'] > 0) %}
+                            {{ "%.2f"|format(value['week_ago'] * 100) }}%
+                            {% else %}
+                            {{ "{:,}".format(value['week_ago']|round|int) }}
+                            {% endif %}
+                          </span>
+                        </td>
+
+
+
+
+                        <td style="background-color:{{value['waw_bgcolor_diff']}};color:{{value['waw_font_color']}};text-align:right;padding:7px;font-size:13px;font-weight:normal;border:1px solid #d3d3d3">
+                          {{ "%.2f"|format(value['waw_perc']) }}%
+                          <br>
+                          <span style="font-size:10px">
+                            {% if (value['weekly_avg'] < 1) and (value['weekly_avg'] > 0) %}
+                            {{ "%.2f"|format(value['weekly_avg'] * 100) }}%
+                            {% else %}
+                            {{ "{:,}".format(value['weekly_avg']|round|int) }}
+                            {% endif %}
+                          </span>
+                        </td>
+
+
+
+
+                        <td style="background-color:{{value['mam_bgcolor_diff']}};color:{{value['mam_font_color']}};text-align:right;padding:7px;font-size:13px;font-weight:normal;border:1px solid #d3d3d3">
+                          {{ "%.2f"|format(value['mam_perc']) }}%
+                          <br>
+                          <span style="font-size:10px">
+                            {% if (value['monthly_avg'] < 1) and (value['monthly_avg'] > 0) %}
+                            {{ "%.2f"|format(value['monthly_avg'] * 100) }}%
+                            {% else %}
+                            {{ "{:,}".format(value['monthly_avg']|round|int) }}
+                            {% endif %}
+                          </span>
+                        </td>
+
+                      </tr>
+
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+</div>

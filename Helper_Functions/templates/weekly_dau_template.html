@@ -1,0 +1,44 @@
+<div class="box" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;" >
+
+    <table class="container" style="width:98%; border-spacing: 0px; border-collapse: collapse; margin-left: 2px">
+
+        <thead style="margin:10px 0">
+            <tr bgcolor="#ffffff" align="left" style="padding-top:5px;color:#444444;font-size:16px">
+                <th colspan="5" style="padding:10px 0px;color:#444;font-size:16px;text-align:left">{{ title }} {{ dt }}</th>
+            </tr>
+        </thead>
+
+
+        <tbody>
+
+            <tr>
+              <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">Metric</td>
+              <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">{{ last_year }}</td>
+              <td width="20%" style="text-align:right;font-size:10px;font-weight:normal;color:#7a7a7a;padding:7px;border:1px solid #d3d3d3">{{ this_year }}</td>
+            </tr>
+
+            {% for key,value in table.iterrows() %}
+                <tr class="rows">
+                    <tr>
+                        <td class="m_-1971619191583544652click" style="text-align:right;padding:7px;font-size:13px;text-align:left;font-size:13px;color:#444;font-weight:bold;font-weight:bold;border:1px solid #d3d3d3">
+                            {{ value['context'] }}
+                        </td>
+
+                        <td style="background:#fafafa;color:black;text-align:right;padding:7px;font-size:13px;font-weight:normal;border:1px solid #d3d3d3">
+                            {{ "{:,}".format(value['last_year_amount']|round|int) }}
+                        </td>
+
+                        <td style="background:#fafafa;color:black;text-align:right;padding:7px;font-size:13px;font-weight:normal;border:1px solid #d3d3d3">
+                            {{ "{:,}".format(value['this_year_amount']|round|int) }}
+                        </td>
+                    </tr>
+                <tr/>
+            {% endfor %}
+
+        <tbody/>
+
+    </table>
+</div>
+
+<br>
+<br>

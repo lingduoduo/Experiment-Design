@@ -1,0 +1,29 @@
+<h4>{{ title }}</h4>
+<table>
+  <tr>
+   <th>Context</th>
+   <th>Yesterday</th>
+   <th>Week ago</th>
+   <th>28 days ago</th>
+  </tr>
+{% for key,value in table.iterrows() %}
+  <tr>
+    <td>
+      {{ value['context'] }}
+    </td>
+    <td>
+      {{ value['yesterday'] }}
+    </td>
+    <td style='background-color:
+      {{value['wow_bgcolor_diff']}}'>
+      {{ value['week_ago'] }}
+      <br/>{{ "%.2f"|format(value['wow_perc']) }}%
+    </td>
+    <td style='background-color:
+    {{value['mon_bgcolor_diff']}}'>
+      {{ value['month_ago'] }}
+      <br/>{{ "%.2f"|format(value['mon_perc']) }}%
+    </td>
+  </tr>
+{% endfor %}
+</table>

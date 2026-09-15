@@ -1,0 +1,24 @@
+{% if title == 'Weekly Average DAU Report' %}
+{% import "weekly_dau_template.html" as alt with context %}
+{{ alt }}
+{% elif title == 'Daily DAU Report' %}
+{% import "dau_template.html" as dau with context %}
+{{ dau }}
+{% elif (title == 'Daily Registrations') or (title == 'Daily Active Users') or (title == 'Monthly Active Users') or (title == 'Daily Engagements') or (title == 'Daily Searches') %}
+{% import "full_leadership.html" as leader with context %}
+{{ leader }}
+{% elif (title == "Geo's") or (title == "CDN's") %}
+{% import "cdn.html" as cdn with context %}
+{{ cdn }}
+{% elif title == 'Daily Trending Topic Clicks' %}
+{% import "trending.html" as trend with context %}
+{{ trend }}
+{% else %}
+{% import "all_temp.html" as norm with context %}
+{{ norm }}
+{% endif %}
+
+
+
+
+

@@ -1,0 +1,97 @@
+<table border="0" style="width:100%;font-family:'lucida grande',tahoma,verdana,arial,sans-serif;border-spacing:0px;border-collapse:collapse">
+
+    <thead style="background-color:#32506d">
+    <tr>
+        <th colspan="3"><h3 style="margin-bottom:0px;color:#fff;margin:5px">{{ title }}</h3></th>
+    </tr>
+    </thead>
+
+
+
+    <tbody>
+
+
+
+    <tr>
+        <td width="20%" style="text-align:center;background:#6b9dc9;color:#fff">
+            Total
+        </td>
+        <td width="40%" style="text-align:center;background:#6b9dc9;color:#fff">
+            Mobile
+        </td>
+        <td width="40%" style="text-align:center;background:#6b9dc9;color:#fff">
+            Web
+        </td>
+    </tr>
+
+
+
+    <tr>
+        <td rowspan="2">
+            <h4 style="text-align:center">{{ "{:,}".format(final_total|round|int) }}<sup style="color: {{ final_total_perc_and_color[1] }}">{{ "%.2f"|format(final_total_perc_and_color[0]) }}%</sup></h4></td>
+    </tr>
+
+
+
+    <tr>
+
+        <td valign="top" style="padding:5px">
+            <table style="table-layout:initial" width="100%">
+                <tbody>
+                <tr style="text-align:right;font-weight:bold">
+                    <td style="padding-right:5px">
+                        Total
+                    </td>
+                    <td style="padding-right:20px">{{ "{:,}".format(mobile_total|round|int) }}</td>
+                    <td style="padding-right:10px"><span style="color: {{ mobile_total_perc_and_color[1] }}">{{ "%.2f"|format(mobile_total_perc_and_color[0]) }}%</span></td>
+                </tr>
+
+                {% for key,value in mobile.iterrows() %}
+
+                <tr style="text-align:right;font-weight:normal;font-size:11px">
+                    <td style="padding-right:5px">
+                        {{ value['context'] }}
+                    </td>
+                    <td style="padding-right:20px">{{ "{:,}".format(value['yesterday']|round|int) }}</td>
+                    <td style="padding-right:10px"><span style="color:{{value['font_color']}}">{{ "%.2f"|format(value['twenty_eight_perc']) }}%</span></td>
+                </tr>
+
+                {% endfor %}
+
+                </tbody>
+            </table>
+        </td>
+
+        <td valign="top" style="padding:5px">
+            <table style="table-layout:initial" width="100%">
+                <tbody>
+                <tr style="text-align:right;font-weight:bold">
+                    <td style="padding-right:5px">
+                        Total
+                    </td>
+                    <td style="padding-right:20px">{{ "{:,}".format(web_total|round|int) }}</td>
+                    <td style="padding-right:10px"><span style="color: {{ web_total_perc_and_color[1] }}">{{ "%.2f"|format(web_total_perc_and_color[0]) }}%</span></td>
+                </tr>
+
+                {% for key,value in web.iterrows() %}
+
+                <tr style="text-align:right;font-weight:normal;font-size:11px">
+                    <td style="padding-right:5px">
+                        {{ value['context'] }}
+                    </td>
+                    <td style="padding-right:20px">{{ "{:,}".format(value['yesterday']|round|int) }}</td>
+                    <td style="padding-right:10px"><span style="color:{{value['font_color']}}">{{ "%.2f"|format(value['twenty_eight_perc']) }}%</span></td>
+                </tr>
+
+                {% endfor %}
+
+                </tbody>
+            </table>
+        </td>
+    </tr>
+
+
+
+    </tbody>
+
+</table>
