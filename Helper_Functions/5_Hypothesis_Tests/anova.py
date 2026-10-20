@@ -83,7 +83,7 @@ def anova_two_way(values, factor_a, factor_b, alpha=0.05):
     anova_table = sm.stats.anova_lm(model, typ=2)
 
     results = {}
-    for term in anova_table.index:
+    for term in anova_table.index.drop("Residual"):
         p = anova_table.loc[term, "PR(>F)"]
         results[term] = {
             "F": anova_table.loc[term, "F"],
