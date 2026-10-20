@@ -150,6 +150,40 @@ python Helper_Functions/9_Time_Series/timestral.py --input context.npy --predict
 
 These flags can be combined with `--past-covariates` and `--known-covariates`.
 
+## Sampled daily CTR example
+
+Run a reproducible example using the default 209M checkpoint:
+
+```sh
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python Helper_Functions/9_Time_Series/daily_ctr_forecast.py --local-files-only
+```
+
+Omit `--local-files-only` if the model has not been cached. Plotting requires
+Matplotlib; data export uses pandas, both included in `requirements-forecast.txt`.
+
+The example samples daily impressions and binomial clicks, with trend, weekly and
+annual variation plus daily noise. Observed CTR is clicks/impressions. Only the
+first 730 observed CTR values are passed to Timestral; the final 28 days are held
+out. The latent synthetic probability is saved for inspection and never supplied
+to the model. Forecasts use raw observed CTR without covariates.
+
+Outputs in `ctr_example_output/`:
+
+- `sampled_daily_ctr.csv`: all 758 synthetic days, clicks, impressions, CTR, latent
+  probability and train/holdout labels.
+- `ctr_predictions.csv`: actual held-out CTR, predicted median, q10/q90 and a
+  weekly seasonal baseline.
+- `metrics.json`: forecast errors and descriptive interval coverage.
+- `ctr_forecast.png`: recent observations, held-out values and predictions.
+
+With seed 42, the saved run measured MAE **0.173 percentage points** and RMSE
+**0.218 percentage points**. The weekly baseline MAE was **0.308 percentage
+points**. The q10–q90 band covered **71.4%** of held-out observations. These results
+come from one synthetic series and do not establish real-world accuracy or
+calibrated interval coverage. Displayed/exported CTR predictions are bounded to
+[0, 1]. Use `--output-dir`, `--seed`, `--history-days`, `--prediction-length`,
+`--model` or `--device` to change the run.
+
 ## Verification
 
 ```sh

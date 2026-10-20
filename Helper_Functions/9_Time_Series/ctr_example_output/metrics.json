@@ -1,0 +1,14 @@
+{
+  "synthetic_data": true,
+  "model": "mistralai/Timestral-209M",
+  "seed": 42,
+  "history_days": 730,
+  "holdout_days": 28,
+  "train_end": "2025-12-30",
+  "forecast_start": "2025-12-31",
+  "timestral_mae_percentage_points": 0.17313298721492787,
+  "timestral_rmse_percentage_points": 0.21836355259676174,
+  "seasonal_naive_mae_percentage_points": 0.3076781949982049,
+  "q10_q90_holdout_coverage": 0.7142857142857143,
+  "note": "Single synthetic holdout; model quantiles are not a calibrated confidence guarantee. CTR predictions clipped to [0, 1]."
+}
