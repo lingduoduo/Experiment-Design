@@ -153,12 +153,19 @@ These flags can be combined with `--past-covariates` and `--known-covariates`.
 ## Verification
 
 ```sh
-python -m pytest Helper_Functions/9_Time_Series/test_timestral.py -q
+python -m pytest Helper_Functions/9_Time_Series/test_timestral.py Helper_Functions/9_Time_Series/test_timestral_backend.py -q
 ```
 
 Offline tests exercise validation, demo RNG isolation, output archives and CLI
 help without downloading weights. When the backend is installed, a tiny randomly
 initialized model additionally checks real inference without network access.
+Additional backend tests use locally generated checkpoints to verify context
+capping, multi-block forecasts, finite ordered quantiles, sign symmetry with
+covariates, categorical target-encoding equivalence, and exact local/Hub loading
+round trips. Hub downloads are replaced with a local snapshot in those tests;
+no model download or credentials are required. Backend tests skip when the optional
+Timestral package is absent.
+
 A manual pretrained 5M run also verified direct execution, eight-step forecasts,
 finite ordered quantiles, and NPZ export. The 209M checkpoint and CUDA were not
 run during verification.
