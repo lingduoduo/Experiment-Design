@@ -1,9 +1,5 @@
 import numpy as np
 from scipy import stats
-import seaborn as sns
-import matplotlib.pyplot as plt
-import pandas as pd
-import statsmodels.api as sm
 from scipy.stats import t
 
 def _normalize(p, eps=1e-12):
@@ -11,7 +7,7 @@ def _normalize(p, eps=1e-12):
     p = np.clip(p, eps, None)          # avoid zeros
     return p / p.sum()                 # ensure sums to 1
 
-def kl_divergence(p, q, eps=1e-12):
+def _probability_kl_divergence(p, q, eps=1e-12):
     p = _normalize(p, eps)
     q = _normalize(q, eps)
     return np.sum(p * np.log(p / q))
@@ -24,7 +20,7 @@ def jensen_shannon_divergence(p, q, eps=1e-12, base=np.e):
     p = _normalize(p, eps)
     q = _normalize(q, eps)
     m = 0.5 * (p + q)
-    jsd = 0.5 * kl_divergence(p, m, eps) + 0.5 * kl_divergence(q, m, eps)
+    jsd = 0.5 * _probability_kl_divergence(p, m, eps) + 0.5 * _probability_kl_divergence(q, m, eps)
     if base != np.e:
         jsd /= np.log(base)
     return jsd
@@ -128,8 +124,9 @@ def kl_divergence(x, y, bins=50, eps=1e-12):
     x = np.asarray(x)
     y = np.asarray(y)
 
-    p_hist, bin_edges = np.histogram(x, bins=bins, density=True)
-    q_hist, _ = np.histogram(y, bins=bin_edges, density=True)
+    bin_edges = np.histogram_bin_edges(np.concatenate((x, y)), bins=bins)
+    p_hist, _ = np.histogram(x, bins=bin_edges)
+    q_hist, _ = np.histogram(y, bins=bin_edges)
 
     p = p_hist + eps
     q = q_hist + eps
@@ -164,10 +161,9 @@ def lr(x, y):
         Dictionary containing regression results and statistics
     """
 
-    import numpy as np
+    # Lazy imports keep the module importable without plotting/statsmodels.
     import pandas as pd
     import matplotlib.pyplot as plt
-    from scipy import stats
     import statsmodels.api as sm
 
     # ---------------------------
@@ -283,10 +279,16 @@ def two_mean_ci_test(x1, x2, conf=0.95):
     Returns:
       difference, t-stat, df, p-value, confidence interval
     """
+    if not 0 < conf < 1:
+        raise ValueError("conf must be between 0 and 1")
     x1 = np.asarray(x1, dtype=float)
     x2 = np.asarray(x2, dtype=float)
+    if x1.ndim != 1 or x2.ndim != 1 or not (np.isfinite(x1).all() and np.isfinite(x2).all()):
+        raise ValueError("samples must be 1D and finite")
 
     n1, n2 = len(x1), len(x2)
+    if n1 < 2 or n2 < 2:
+        raise ValueError("Each sample needs at least 2 observations")
     m1, m2 = x1.mean(), x2.mean()
     s1, s2 = x1.std(ddof=1), x2.std(ddof=1)
 
@@ -294,6 +296,8 @@ def two_mean_ci_test(x1, x2, conf=0.95):
 
     # Standard error
     se = np.sqrt(s1**2 / n1 + s2**2 / n2)
+    if se == 0:
+        raise ValueError("Both samples have zero variance; Welch t-test is undefined")
 
     # Welch degrees of freedom
     df = (s1**2 / n1 + s2**2 / n2)**2 / (
@@ -302,7 +306,7 @@ def two_mean_ci_test(x1, x2, conf=0.95):
     )
 
     t_stat = diff / se
-    p_value = 2 * (1 - t.cdf(abs(t_stat), df=df))
+    p_value = 2 * t.sf(abs(t_stat), df=df)
 
     tcrit = t.ppf(0.5 + conf / 2, df=df)
     ci = (diff - tcrit * se, diff + tcrit * se)

@@ -1,6 +1,5 @@
 import numpy as np
-from scipy.stats import stats, chisquare, chi2_contingency, fisher_exact, norm
-import matplotlib.pyplot as plt
+from scipy.stats import chisquare, chi2_contingency, fisher_exact, norm
 import pandas as pd
 
 
@@ -132,7 +131,9 @@ def fisher_exact_test(table, alternative="two-sided"):
     p_value : float
         p-value of the test.
     """
-    table = np.asarray(table, dtype=int)
+    table = np.asarray(table, dtype=float)
+    if not np.all(np.isfinite(table)) or np.any(table != np.floor(table)):
+        raise ValueError("table counts must be finite integers")
 
     if table.shape != (2, 2):
         raise ValueError("Fisher's Exact Test requires a 2x2 table")
@@ -152,7 +153,7 @@ def fisher_exact_test(table, alternative="two-sided"):
 #     [18, 82],   # treatment
 # ])
 
-# odds_ratio, p = fisher_exact(table_2x2, alternative="two-sided")
+# odds_ratio, p = fisher_exact_test(table_2x2, alternative="two-sided")
 # print("\nFisher’s Exact Test (2x2)")
 # print("  odds_ratio =", odds_ratio)
 # print("  p          =", p)
@@ -175,53 +176,6 @@ def contingency_table(x, y):
     """
     return pd.crosstab(x, y)
 
-# ------------------------------------------------
-# Crosstab + Stacked Bar Chart
-# Crosstab between gender and alcohol consumption
-# ------------------------------------------------
-gender_acl = pd.crosstab(student['gender'], student['acl'])
-
-fig, ax = plt.subplots(figsize=(7, 4))
-gender_acl.plot(kind='bar', stacked=True, ax=ax)
-ax.set_title("Gender vs Alcohol Consumption")
-plt.show()
-
-# Chi-Square Test on Crosstab
-chi_stat, p_value, dof, expected = stats.chi2_contingency(gender_acl)
-
-expected_table = pd.DataFrame(
-    expected,
-    index=gender_acl.index,
-    columns=gender_acl.columns
-)
-
-print("Chi-square statistic:", chi_stat)
-print("p-value:", p_value)
-print("Degrees of freedom:", dof)
-print("Expected frequencies:\n", expected_table)
-
-# ------------------------------------------------
-# Chi-Square Test with Pandas + Visualization
-# ------------------------------------------------
-# Bar plots
-fig, axes = plt.subplots(1, 2, figsize=(14, 4))
-
-student['gender'].value_counts().plot(
-    kind='bar',
-    ax=axes[0],
-    title='Gender'
-)
-
-student['acl'].value_counts().plot(
-    kind='bar',
-    ax=axes[1],
-    title='Alcohol'
-)
-
-plt.tight_layout()
-plt.show()
-
-
 def two_proportion_ci_test(x1, n1, x2, n2, conf=0.95):
     """
     Compare two proportions: p1 - p2
@@ -233,6 +187,13 @@ def two_proportion_ci_test(x1, n1, x2, n2, conf=0.95):
     Returns:
       difference, z-stat, p-value, confidence interval
     """
+    if not 0 < conf < 1:
+        raise ValueError("conf must be between 0 and 1")
+    for successes, trials in ((x1, n1), (x2, n2)):
+        if (not np.isfinite([successes, trials]).all()
+                or trials <= 0 or not 0 <= successes <= trials
+                or successes != int(successes) or trials != int(trials)):
+            raise ValueError("Require integer counts with n>0 and 0<=x<=n")
     p1 = x1 / n1
     p2 = x2 / n2
     diff = p1 - p2
@@ -248,8 +209,8 @@ def two_proportion_ci_test(x1, n1, x2, n2, conf=0.95):
     # Hypothesis test (pooled SE)
     p_pool = (x1 + x2) / (n1 + n2)
     se_test = np.sqrt(p_pool * (1 - p_pool) * (1 / n1 + 1 / n2))
-    z = diff / se_test
-    p_value = 2 * (1 - norm.cdf(abs(z)))
+    z = diff / se_test if se_test > 0 else 0.0
+    p_value = 2 * norm.sf(abs(z))
 
     return {
         "p1_hat": p1,
@@ -259,11 +220,3 @@ def two_proportion_ci_test(x1, n1, x2, n2, conf=0.95):
         "p_value": p_value,
         "ci": ci
     }
-
-# Group A: 245 conversions out of 1000
-# Group B: 210 conversions out of 980
-res = two_proportion_ci_test(245, 1000, 210, 980)
-
-print("Diff (pA - pB):", res["difference"])
-print("95% CI:", res["ci"])
-print("p-value:", res["p_value"])
