@@ -1,39 +1,39 @@
 """Compare Prophet, ETS, and a sequential Prophet/ETS/LSTM residual model."""
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from scipy.signal import periodogram
-from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler
 
-from prophet import Prophet
+
+def _validate_integer(value, name, minimum=1):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}.")
 
 
 class ResidDataset(Dataset):
     def __init__(self, series, input_len=28, horizon=1):
         if horizon != 1:
             raise ValueError("Only horizon=1 is supported; forecasts recurse one step at a time.")
-        if input_len < 1 or len(series) < input_len + horizon:
+        _validate_integer(input_len, "input_len")
+        if len(series) < input_len + horizon:
             raise ValueError("The series must contain at least input_len + horizon values.")
-        self.series = np.asarray(series, dtype=np.float32)
+        self.series = np.array(series, dtype=np.float32, copy=True)
         if self.series.ndim != 1 or not np.isfinite(self.series).all():
             raise ValueError("The series must be one-dimensional and finite.")
         self.input_len = input_len
         self.horizon = horizon
-        self.X, self.y = [], []
-        for i in range(0, len(series) - input_len - horizon + 1):
-            self.X.append(self.series[i:i+input_len])
-            self.y.append(self.series[i+input_len:i+input_len+horizon])
-        self.X = np.array(self.X)
-        self.y = np.array(self.y)
+        # Views retain O(N) storage instead of copying every overlapping window.
+        self.X = np.lib.stride_tricks.sliding_window_view(self.series, input_len)[:-1]
+        self.y = self.series[input_len:, None]
     def __len__(self):
         return len(self.X)
     def __getitem__(self, idx):
-        return torch.from_numpy(self.X[idx]).unsqueeze(-1), torch.from_numpy(self.y[idx])
+        # idx may be an int or a batch of indices; np.array copies so callers
+        # cannot overwrite the shared series through a returned tensor.
+        x = torch.from_numpy(np.array(self.X[idx]))
+        y = torch.from_numpy(np.array(self.y[idx]))
+        return x.unsqueeze(-1), y
 
 
 class ResidLSTM(nn.Module):
@@ -60,32 +60,59 @@ def rolling_resid_predict(
     """
     if horizon != 1:
         raise ValueError("Only horizon=1 is supported.")
-    context = np.asarray(resid_init, dtype=np.float32).copy()
-    if input_len < 1 or context.ndim != 1 or len(context) < input_len:
+    _validate_integer(input_len, "input_len")
+    _validate_integer(total_steps, "total_steps", minimum=0)
+    context = np.asarray(resid_init, dtype=np.float32)
+    if context.ndim != 1 or len(context) < input_len:
         raise ValueError("Provide a one-dimensional context of at least input_len values.")
-    if total_steps < 0 or not np.isfinite(context).all():
-        raise ValueError("Steps must be nonnegative and context values finite.")
-    device = next(model.parameters(), torch.empty(0)).device
-    model.eval()
-    preds = []
-    with torch.no_grad():
-        for _ in range(total_steps):
-            x = torch.from_numpy(context[-input_len:].astype(np.float32)).unsqueeze(0).unsqueeze(-1).to(device)
-            yhat = model(x).cpu().numpy().flatten()[0]
-            preds.append(yhat)
-            context = np.append(context, yhat)
-    return np.array(preds)
+    if not np.isfinite(context).all():
+        raise ValueError("Context values must be finite.")
+    parameter = next(model.parameters(), None)
+    device = parameter.device if parameter is not None else torch.device("cpu")
+    dtype = parameter.dtype if parameter is not None else torch.float32
+    # Keep context and predictions on the model device; copy to CPU once.
+    was_training = model.training
+    try:
+        model.eval()
+        with torch.inference_mode():
+            history = torch.empty(input_len + total_steps, device=device, dtype=dtype)
+            history[:input_len] = torch.as_tensor(context[-input_len:].copy(), device=device, dtype=dtype)
+            for step in range(total_steps):
+                x = history[step:step + input_len].reshape(1, input_len, 1)
+                prediction = model(x)
+                if prediction.numel() != 1:
+                    raise ValueError("The model must predict exactly one residual per step.")
+                history[input_len + step] = prediction.reshape(())
+            result = history[input_len:].cpu().numpy().copy()
+    finally:
+        model.train(was_training)
+    if not np.isfinite(result).all():
+        raise ValueError("The model produced nonfinite residual predictions.")
+    return result
+
+
+def _metric_inputs(y_true, y_pred):
+    actual = np.asarray(y_true, dtype=float)
+    predicted = np.asarray(y_pred, dtype=float)
+    if (actual.ndim != 1 or actual.size == 0 or actual.shape != predicted.shape
+            or not np.isfinite(actual).all() or not np.isfinite(predicted).all()):
+        raise ValueError("Metrics require matching, nonempty, finite 1D arrays.")
+    return actual, predicted
 
 
 def mae(y_true, y_pred):
+    y_true, y_pred = _metric_inputs(y_true, y_pred)
     return np.mean(np.abs(y_true - y_pred))
 
 
 def rmse(y_true, y_pred):
+    y_true, y_pred = _metric_inputs(y_true, y_pred)
     return np.sqrt(np.mean((y_true - y_pred)**2))
 
 
 def mape(y_true, y_pred):
+    """Percentage error using a 1e-6 denominator floor for zero targets."""
+    y_true, y_pred = _metric_inputs(y_true, y_pred)
     return np.mean(np.abs((y_true - y_pred) / np.maximum(1e-6, np.abs(y_true)))) * 100
 
 
@@ -95,8 +122,17 @@ def run_experiment(epochs: int = 30, seed: int = 42, make_plots: bool = True) ->
     Validation and test forecasts both start at the training cutoff. The
     validation set is diagnostic only; it is not used for fitting or tuning.
     """
-    if epochs < 1:
-        raise ValueError("epochs must be positive.")
+    _validate_integer(epochs, "epochs")
+    from prophet import Prophet
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+    if make_plots:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from scipy.signal import periodogram
+        from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+
+        sns.set(style="whitegrid")
     palette = {
         "raw": "#FF00FF",
         "trend": "#00FFFF",
@@ -110,8 +146,6 @@ def run_experiment(epochs: int = 30, seed: int = 42, make_plots: bool = True) ->
         "resid": "#8A2BE2",
         "error": "#FFD700",
     }
-    sns.set(style="whitegrid")
-
     np.random.seed(seed)
     torch.manual_seed(seed)
 
@@ -194,7 +228,12 @@ def run_experiment(epochs: int = 30, seed: int = 42, make_plots: bool = True) ->
     input_len = 28
     horizon = 1
     dataset = ResidDataset(resid_scaled, input_len=input_len, horizon=horizon)
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+    # Fetch whole batches with one fancy-index copy instead of collating 32
+    # per-sample tensors; RandomSampler matches shuffle=True batch order.
+    loader = DataLoader(
+        dataset, batch_size=None,
+        sampler=BatchSampler(RandomSampler(dataset), batch_size=32, drop_last=False),
+    )
 
     # LSTM model.
 
