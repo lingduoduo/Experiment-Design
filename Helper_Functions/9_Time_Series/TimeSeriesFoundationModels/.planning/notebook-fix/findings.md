@@ -1,0 +1,1 @@
+The local timestral.py launcher shadows the upstream package. The existing timestral_example._backend loader resolves that collision. The base Python environment lacks the upstream distribution. All three notebooks use the conflicting direct import.

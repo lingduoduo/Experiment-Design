@@ -1,0 +1,1 @@
+Completed: fixed all notebook imports via existing backend loader; pinned installation to existing requirements revision; installed package; executed and saved all three notebooks with real Timestral-5M weights. Verified all code cells executed without errors. Local pytest: 21 passed, 32 subtests passed.
