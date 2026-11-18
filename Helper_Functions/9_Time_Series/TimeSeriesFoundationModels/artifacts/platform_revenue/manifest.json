@@ -1,0 +1,20 @@
+{
+  "seed": 2026,
+  "days": 1825,
+  "model": "mistralai/Timestral-5M",
+  "checkpoint_revision": "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f",
+  "context": 365,
+  "horizons": [
+    7,
+    30,
+    90
+  ],
+  "python": "3.10.20 | packaged by conda-forge | (main, Mar  5 2026, 17:06:34) [Clang 19.1.7 ]",
+  "executable": "/Users/linghuang/miniconda3/envs/llm/bin/python",
+  "versions": {
+    "timestral": "1.0.0",
+    "torch": "2.14.0",
+    "numpy": "2.2.6",
+    "pandas": "2.3.3"
+  }
+}
